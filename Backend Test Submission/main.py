@@ -10,7 +10,6 @@ import pymysql
 
 app = FastAPI()
 
-# ✅ Add this CORS config
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,8 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
-app = FastAPI()
-
 LOGGING_SERVICE_URL = "http://localhost:5001/log"
 
 # MySQL Database Config
