@@ -33,6 +33,6 @@ A HTTP URL Shortener built using FastAPI + MySQL. Supports custom shortcodes, ex
 <img width="1292" height="426" alt="Screenshot 2025-07-16 164304" src="https://github.com/user-attachments/assets/e2dbcc8a-efca-4043-b9e0-ad69e63b321b" />
 
 ### Backend
-![Uploading image.png…]()
+<img width="639" height="145" alt="image" src="https://github.com/user-attachments/assets/2d4df9ec-265e-40c0-8ab9-83dd172878de" />
 
 <img width="432" height="286" alt="image" src="https://github.com/user-attachments/assets/b88bd7ec-8a01-4b0c-b7c2-cec280bc6f29" />
