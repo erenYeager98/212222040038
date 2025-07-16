@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { logEvent } from "../../../Logging Middleware/logger";
+
 import {
   Box,
   TextField,
