@@ -56,3 +56,33 @@ def init_db():
     log_event("backend", "info", "db", "Initialized database")
 
 init_db()
+
+
+class ShortenRequest(BaseModel):
+    url: HttpUrl
+    validity: int = 30
+    shortcode: str | None = None
+
+@app.post("/shorturls")
+def create_short_url(data: ShortenRequest):
+    shortcode = data.shortcode or uuid4().hex[:6]
+    expiry = datetime.utcnow() + timedelta(minutes=data.validity)
+    now = datetime.utcnow()
+
+    conn = pymysql.connect(**DB_CONFIG)
+    with conn.cursor() as c:
+        c.execute("SELECT 1 FROM shorturls WHERE shortcode=%s", (shortcode,))
+        if c.fetchone():
+            log_event("backend", "error", "handler", f"Shortcode {shortcode} already exists")
+            raise HTTPException(400, detail="Shortcode already taken")
+
+        c.execute("INSERT INTO shorturls (shortcode, long_url, created_at, expiry_at) VALUES (%s, %s, %s, %s)",
+                  (shortcode, data.url, now, expiry))
+    conn.commit()
+    conn.close()
+
+    log_event("backend", "info", "handler", f"Short URL created: {shortcode}")
+    return {
+        "shortLink": f"http://localhost:8000/{shortcode}",
+        "expiry": expiry.isoformat()
+    }
