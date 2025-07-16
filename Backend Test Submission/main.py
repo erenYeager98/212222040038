@@ -1,12 +1,23 @@
 # main.py
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from fastapi.middleware.cors import CORSMiddleware 
 from pydantic import BaseModel, HttpUrl
 from datetime import datetime, timedelta
 from uuid import uuid4
 import requests
 import pymysql
 
+app = FastAPI()
+
+# ✅ Add this CORS config
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 app = FastAPI()
 
 LOGGING_SERVICE_URL = "http://localhost:5001/log"
@@ -59,7 +70,7 @@ init_db()
 
 
 class ShortenRequest(BaseModel):
-    url: HttpUrl
+    url: str
     validity: int = 30
     shortcode: str | None = None
 
@@ -86,3 +97,65 @@ def create_short_url(data: ShortenRequest):
         "shortLink": f"http://localhost:8000/{shortcode}",
         "expiry": expiry.isoformat()
     }
+
+
+@app.get("/{shortcode}")
+def redirect_to_url(shortcode: str, request: Request):
+    conn = pymysql.connect(**DB_CONFIG)
+    with conn.cursor() as c:
+        c.execute("SELECT long_url, expiry_at FROM shorturls WHERE shortcode=%s", (shortcode,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            log_event("backend", "error", "handler", f"Shortcode {shortcode} not found")
+            raise HTTPException(404, detail="Shortcode not found")
+
+        long_url, expiry_at = row
+        if datetime.utcnow() > expiry_at:
+            conn.close()
+            log_event("backend", "warn", "handler", f"Shortcode {shortcode} expired")
+            raise HTTPException(410, detail="Short URL has expired")
+
+        c.execute("UPDATE shorturls SET clicks = clicks + 1 WHERE shortcode=%s", (shortcode,))
+        click_id = str(uuid4())
+        timestamp = datetime.utcnow()
+        referrer = request.headers.get("referer")
+        ip = request.client.host
+        location = "India"  # placeholder
+        c.execute("INSERT INTO clicks (id, shortcode, timestamp, referrer, ip, location) VALUES (%s, %s, %s, %s, %s, %s)",
+                  (click_id, shortcode, timestamp, referrer, ip, location))
+    conn.commit()
+    conn.close()
+
+    log_event("backend", "info", "handler", f"Redirected {shortcode} to {long_url}")
+    return RedirectResponse(url=long_url)
+
+@app.get("/shorturls/{shortcode}")
+def get_stats(shortcode: str):
+    conn = pymysql.connect(**DB_CONFIG)
+    with conn.cursor() as c:
+        c.execute("SELECT long_url, created_at, expiry_at, clicks FROM shorturls WHERE shortcode=%s", (shortcode,))
+        row = c.fetchone()
+        if not row:
+            conn.close()
+            log_event("backend", "error", "handler", f"Stats not found for {shortcode}")
+            raise HTTPException(404, detail="Shortcode not found")
+
+        long_url, created_at, expiry_at, clicks = row
+        c.execute("SELECT timestamp, referrer, ip, location FROM clicks WHERE shortcode=%s", (shortcode,))
+        click_data = [
+            {"timestamp": ts, "referrer": ref, "ip": ip, "location": loc}
+            for ts, ref, ip, loc in c.fetchall()
+        ]
+    conn.close()
+
+    log_event("backend", "info", "handler", f"Stats fetched for {shortcode}")
+    return {
+        "shortcode": shortcode,
+        "original_url": long_url,
+        "created_at": created_at.isoformat(),
+        "expiry_at": expiry_at.isoformat(),
+        "clicks": clicks,
+        "click_data": click_data
+    }
+ 
